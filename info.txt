@@ -1,0 +1,185 @@
+
+ini project->I have created one project in C that is Academia course registration protal in which all students,faculty and course details stored in a file ,
+And all the account holders have to pass through the login system to enter their accounts and alll the accounts will be managed by administrator
+I have implemented three role here faculty,student,admin.
+Admin has password that we have set manually and only admin know that password so there can’t be any unauthorised access.
+Once the admin connects to the server .He /she should get a login and password prompt after successfully login the admin should see a menu with
+ options like add student ,add faculty,activate/deactivate student ,update/student faculty details and exit.
+
+Once the Student connects to the server, He/She should get a login and password prompt.After successful login, He/She should get menu for example.
+Do you want to: 
+Enroll to new Courses - 
+Unenroll from already enrolled Courses -
+ View enrolled Courses 
+- Password Change -
+ Exit
+
+Once the Faculty connects to the server, He/She should get a login and password prompt. After successful login, 
+He/She should get menu for example: Do you want to:
+ - Add new Course
+ Remove offered Course 
+- View enrollments in Courses 
+- Password Change
+Exit
+
+I have used socket programming and file locking principle to implement my project.
+What is socket?A socket is used to communicate between different IP address .Socket of type sock_stream is for full duplex connection.Sockets are similar
+ to unamed pipes but they support full duplex communication and communication across the network.Socket will reside between application and transport layer
+ .we can use tcp or upd for our socket based on which it will determine whether the socket communication has to be fully online,or partially online.
+Socket address=IP address+Port Address
+
+There are types of architecture one is client server architecture and another one is peer to peer architecture.
+There are two types of server->
+1.Iterative server
+2.Concurrent server
+
+Iterative server only allows one client to be connected with the server at a time .So if another client request sconnection with the server it while 
+the first client is still connected then it will have to wait till the first client terminates its connection.
+
+Concurrent server->When a client establish a connection with the server ,the server call fork and creates the child process .This child process
+ will be responsible for handling that client and this method generalizes to n clients being connected to a single server at the same time 
+
+I have used socket system call to create the sockets.The socket system call return -1 on error and socket descriptor on success.
+And I have used conureent server concept in my project because at a time multiple client can connect to the server.
+
+AF_UNIX->means client and server at the same machine
+AF_INET-> means client and server are not on the same machine.
+
+SOCKET_TYPE->
+SOCK_STREAM-> for TCP connection oriented
+SOCK_DGRAM-> for UDP connection less 
+for my project i have used TCP based connection so i have used SOCK_STREAM for my project
+I have created server and client sockets using socket().
+1.Server binds to port address using bind() and listens for client connection using listen().bind bassically attach ip address to the socket.
+2.when a client wants to connect a server  it will use connect() which the server accepts using accept .
+Connection is a three way handshake which go like syn,syn+ack,ack
+When a client wants to request data from the server it will use write() to send a message to the server.
+Server reads this message using the read() and send back the requested service data  by sending a message via write().
+Client reads this using read() this can repeat n number of times and finally the client closes the connection using close() .Server reads this
+ close and terminate the connection.Eventually the server can itself close using the close system call.
+
+Why we are using the htons system call because IP address and port number uses the big endian and ous system support little endian so to 
+convert it from big endian to little endian.
+Htons stand for host to network short.
+
+In listen backlog should not be zero as server always expect the connection from client.
+Backlog-> the number of connection allowed in incoming queue.
+To maintain concurrency i have used file locking
+Why do we need file locking?It often happens that we want to share data in a file to multiple processes. So we have to provide the concept 
+of concurrent access because it can happen that multiple processes will want to access the same file at the same time. But this results in 
+Race Condition: Two or more processes trying to access the same file. This can easily result in a deadlock. So we want to avoid this but at
+ the same time maintain synchronization, i.e. all processes must have the updated version of the shared resource that they are accessing. And
+  this finally brings us to File Locking.
+Types of locking->Mandator locking and advisor locking ->Mandatory locking is enforced at the kernel whereas Advisory Locking is a convention that 
+is followed by processes to ensure that proper locking protocol is achieved. This basically means that in advisory locking, a process can lock a 
+record but another process that doesn’t use the locking concept will still be able to access the record. 
+However, in mandatory locking, once a file is locked by a process it is kept track of by the kernel and if any new process tries to access it then 
+it will be blocked by the kernel until the lock is released. 
+Advisory locking is essentially like blocking only the critical sections of a file. This definitely improves performance over Mandatory locking
+F_SETLK acquires/releases a lock on the given file, if lock cannot be acquired/released it returns -1.F_SETLKW is also for acquiring/releasing a 
+lock on the given file, but if lock cannot be acquired/released, it waits till it can acquire/release lock, which is why it has that “W” for “Waiting”. 
+Because of this behaviour we typically use F_SETLK for unlocking and F_SETLKW for acquiring locks.
+F_GETLK checks whether there is already a lock on the given file.
+We are going to be using fcntl for file locking because it is the actual system call and this is just a library function. 
+How to implement Mandatory Locking using fcntl?
+ Set lock.l_start = 0 and lock.l_len = 0; This tells the system that the entire file is to be locked, i.e. mandatory locking.
+
+
+ +------------------+     TCP/IP     +---------------------+
+|                  |    SOCKET      |                     |
+|  CLIENT(S)       |<-------------->|  SERVER             |
+|                  |   CONNECTION   |                     |
++------------------+                +----------+----------+
+                                              |
+                                              | Routes requests
+                                              v
+               +--------------------------------------------+
+               |                                            |
+               |             AUTHENTICATION                 |
+               |                                            |
+               +--------------------------------------------+
+                      |            |            |
+                      v            v            v
++-------------------+ +------------+ +-----------------------+
+|                   | |            | |                       |
+|  ADMIN MODULE     | | FACULTY    | | STUDENT MODULE        |
+|                   | | MODULE     | |                       |
++-------------------+ +------------+ +-----------------------+
+| - Login           | | - Login    | | - Login               |
+| - Add student     | | - Change   | | - Change password     |
+| - Add faculty     | |   password | | - View all courses    |
+| - Add course      | | - Add      | | - Enroll in courses   |
+| - View student    | |   course   | | - View enrolled       |
+| - View faculty    | | - View     | |   courses             |
+|   details         | |   courses  | |                       |
++--------+----------+ +-----+------+ +------------+----------+
+         |                  |                     |
+         v                  v                     v
++--------------------------------------------------+
+|                                                  |
+|                 DATA STORAGE                     |
+|                                                  |
++--------------------------------------------------+
+| - student_record.txt                             |
+| - faculty_record.txt                             |
+| - courses.txt                                    |
+| - enrollment records                             |
++--------------------------------------------------+
+
+
+
+Project Summary
+This is an Academic Management System implemented as a client-server application using socket programming in C. The system provides different functionality for three types of users: administrators, faculty members, and students.
+
+Key Components:
+Server Component:
+
+Handles client connections using socket programming
+Uses fork() to handle multiple clients simultaneously
+Routes requests to appropriate handlers based on user type
+Authentication System:
+
+Separate login mechanisms for admin, faculty, and students
+Password verification
+Session management
+Admin Module:
+
+Admin can add new students to the system
+Admin can add new faculty members
+View details of students and faculty members
+System administration capabilities
+Faculty Module:
+
+Faculty login with ID/password
+Change password functionality
+Add new courses to the system
+View and manage their courses
+Student Module:
+
+Student login with ID/password
+Change password functionality
+View all available courses
+Enroll in courses
+View enrolled courses
+Data Storage:
+
+File-based storage using structured binary files
+Student records stored in student_record.txt
+Faculty records stored in faculty_record.txt
+Course information stored in courses.txt
+Enrollment information linking students to courses
+Technical Implementation:
+Language: C
+Communication: TCP/IP sockets
+Concurrency: Process-based using fork()
+Data Structure: Custom structures for students, faculty, and courses
+File Operations: Low-level file I/O using open(), read(), write(), etc.
+Security: Basic password protection (with potential for crypt() encryption)
+System Flow:
+Server starts and listens for connections
+Client connects and receives initial prompt
+User selects login type (admin/faculty/student)
+System authenticates user credentials
+Based on user type, appropriate operation handler is invoked
+User performs operations through command interface
+When done, connection is closed
