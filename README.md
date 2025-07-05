@@ -25,7 +25,7 @@ The project has following functionality:
 To run this project 
 
 ```bash
-  gcc -o server server.c
+ gcc -o s server.c -lpthread -lcrypt
 ```
 ```bash
   gcc -o  client client.c
