@@ -16,8 +16,8 @@
 #include "../structure/student.h"
 #include "../structure/faculty.h"
 
-#define LOGIN_ID_REAL "Abhishek"
-#define PASSWORD "123456"
+#define LOGIN_ID_REAL "Priyansh"
+#define PASSWORD "1234"
 
 bool admin_operation_handler(int connectfd);
 int add_customer(int connectfd);
@@ -72,36 +72,70 @@ bool login_handler(int connectfd)
 }
 int add_student(int connect_fd)
 {
-    ssize_t rb,wb;//this is for read bytes and write bytes
-    char rbuffer[1000],wbuffer[1000];
-    struct student new_st,pre_st;
-    int cfd=open("student_record.txt",O_RDWR);
-    if (cfd==-1&&errno==ENOENT)//if file does not exit means this is the first student
+    ssize_t rb, wb;
+    char rbuffer[1000], wbuffer[1000];
+    struct student new_st, pre_st;
+    int cfd;
+    struct flock lock;
+    
+    // Initialize the lock structure
+    lock.l_type = F_WRLCK;   // Write lock
+    lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
+    lock.l_len = 0;          // Lock the entire file
+    lock.l_pid = getpid();
+
+    cfd = open("student_record.txt", O_RDWR);
+    if (cfd == -1 && errno == ENOENT) // if file does not exist means this is the first student
     {
         new_st.id = 0;
     }
-    else if(cfd==-1)
+    else if(cfd == -1)
     {
         perror("\nThere is an error while opening the student file");
         return -1;
     }
     else
     {
-        int offset =lseek(cfd,-sizeof(struct student),SEEK_END);
-        if(offset==-1)
+        // Acquire lock before file operations
+        if (fcntl(cfd, F_SETLKW, &lock) == -1) {
+            perror("Error acquiring lock");
+            close(cfd);
+            return -1;
+        }
+        
+        int offset = lseek(cfd, -sizeof(struct student), SEEK_END);
+        if(offset == -1)
         {
             perror("There is while seeking the last student record!");
+            
+            // Release lock before returning
+            lock.l_type = F_UNLCK;
+            fcntl(cfd, F_SETLK, &lock);
+            close(cfd);
             return 0;
         }
-        rb=read(cfd,&pre_st,sizeof(struct student));
-        if (rb==-1)
+        
+        rb = read(cfd, &pre_st, sizeof(struct student));
+        if (rb == -1)
         {
             perror("There is an error while reading the record!");
+            
+            // Release lock before returning
+            lock.l_type = F_UNLCK;
+            fcntl(cfd, F_SETLK, &lock);
+            close(cfd);
             return 0;
         }
+        
+        // Release lock
+        lock.l_type = F_UNLCK;
+        fcntl(cfd, F_SETLK, &lock);
         close(cfd);
-        new_st.id=pre_st.id+1;
+        
+        new_st.id = pre_st.id + 1;
     }
+
     sprintf(wbuffer,"%s",ADD_NAME);
     wb=write(connect_fd,wbuffer,sizeof(wbuffer));
     if(wb==-1)
@@ -158,23 +192,41 @@ int add_student(int connect_fd)
     strcat(new_st.login,"-");
     sprintf(wbuffer,"%d",new_st.id);
     strcat(new_st.login,wbuffer);
-    //char hashedPassword[1000];
-    //strcpy(hashedPassword,crypt("iiitb","666"));
     strcpy(new_st.password,"iiitb");
-    cfd=open("student_record.txt",O_CREAT|O_APPEND|O_RDWR,S_IRWXU);
-    if (cfd==-1)
+
+    cfd = open("student_record.txt", O_CREAT|O_APPEND|O_RDWR, S_IRWXU);
+    if (cfd == -1)
     {
         perror("There is an error in file opening!");
         return 0;
     }
-    new_st.status=1;//activate by default
-    wb=write(cfd,&new_st,sizeof(new_st));
-    if (wb==-1)
+    
+    // Re-acquire lock for writing
+    lock.l_type = F_WRLCK;
+    if (fcntl(cfd, F_SETLKW, &lock) == -1) {
+        perror("Error acquiring lock");
+        close(cfd);
+        return -1;
+    }
+    
+    new_st.status = 1; // activate by default
+    wb = write(cfd, &new_st, sizeof(new_st));
+    if (wb == -1)
     {
         perror("There is an error while writing record to file!");
+        
+        // Release lock before returning
+        lock.l_type = F_UNLCK;
+        fcntl(cfd, F_SETLK, &lock);
+        close(cfd);
         return 0;
     }
+    
+    // Release lock before closing
+    lock.l_type = F_UNLCK;
+    fcntl(cfd, F_SETLK, &lock);
     close(cfd);
+
     bzero(wbuffer,sizeof(wbuffer));
     sprintf(wbuffer,"%s\n%s",new_st.login,new_st.password);
     strcat(wbuffer,"^");
@@ -190,36 +242,70 @@ int add_student(int connect_fd)
 
 int add_faculty(int connect_fd)
 {
-    ssize_t rb,wb;//this is for read bytes and write bytes
-    char rbuffer[1000],wbuffer[1000];
-    struct faculty new_ft,pre_ft;
-    int cfd=open("./faculty_record.txt",O_RDWR);
-    if (cfd==-1&&errno==ENOENT)//if file does not exit means this is the first faculty
+    ssize_t rb, wb;
+    char rbuffer[1000], wbuffer[1000];
+    struct faculty new_ft, pre_ft;
+    int cfd;
+    
+    // Initialize lock structure for thread safety
+    struct flock lock;
+    lock.l_type = F_WRLCK;   // Write lock
+    lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
+    lock.l_len = 0;          // Lock the entire file
+    lock.l_pid = getpid();
+    
+    cfd = open("./faculty_record.txt", O_RDWR);
+    if (cfd == -1 && errno == ENOENT) // if file does not exist means this is the first faculty
     {
         new_ft.id = 0;
     }
-    else if(cfd==-1)
+    else if(cfd == -1)
     {
         perror("\nThere is an error while opening the faculty file");
         return -1;
     }
     else
     {
-        int offset =lseek(cfd,-sizeof(struct faculty),SEEK_END);
-        if(offset==-1)
+        // Acquire lock before file operations
+        if (fcntl(cfd, F_SETLKW, &lock) == -1) {
+            perror("Error acquiring lock");
+            close(cfd);
+            return -1;
+        }
+        
+        int offset = lseek(cfd, -sizeof(struct faculty), SEEK_END);
+        if(offset == -1)
         {
-            perror("There is while seeking the last student record!");
+            perror("There is while seeking the last faculty record!");
+            
+            // Release lock before returning
+            lock.l_type = F_UNLCK;
+            fcntl(cfd, F_SETLK, &lock);
+            close(cfd);
             return 0;
         }
-        rb=read(cfd,&pre_ft,sizeof(struct faculty));
-        if (rb==-1)
+        
+        rb = read(cfd, &pre_ft, sizeof(struct faculty));
+        if (rb == -1)
         {
             perror("There is an error while reading the record!");
+            
+            // Release lock before returning
+            lock.l_type = F_UNLCK;
+            fcntl(cfd, F_SETLK, &lock);
+            close(cfd);
             return 0;
         }
+        
+        // Release lock
+        lock.l_type = F_UNLCK;
+        fcntl(cfd, F_SETLK, &lock);
         close(cfd);
-        new_ft.id=pre_ft.id+1;
+        
+        new_ft.id = pre_ft.id + 1;
     }
+
     sprintf(wbuffer,"%s",ADD_NAME);
     wb=write(connect_fd,wbuffer,sizeof(wbuffer));
     if(wb==-1)
@@ -230,7 +316,7 @@ int add_faculty(int connect_fd)
     rb=read(connect_fd,rbuffer,sizeof(rbuffer));
     if(rb==-1)
     {
-        perror("There is an error while reading student name!");
+        perror("There is an error while reading faculty name!");
         return 0;
     }
     strcpy(new_ft.name,rbuffer);
@@ -279,19 +365,39 @@ int add_faculty(int connect_fd)
     char hashedPassword[1000];
     strcpy(hashedPassword,crypt("iiitb","666"));
     strcpy(new_ft.password,hashedPassword);
-    cfd=open("./faculty_record.txt",O_CREAT|O_APPEND|O_RDWR,S_IRWXU);
-    if (cfd==-1)
+
+    cfd = open("./faculty_record.txt", O_CREAT|O_APPEND|O_RDWR, S_IRWXU);
+    if (cfd == -1)
     {
         perror("There is an error in file opening!");
         return 0;
     }
-    wb=write(cfd,&new_ft,sizeof(new_ft));
-    if (wb==-1)
+    
+    // Re-acquire lock for writing
+    lock.l_type = F_WRLCK;
+    if (fcntl(cfd, F_SETLKW, &lock) == -1) {
+        perror("Error acquiring lock");
+        close(cfd);
+        return -1;
+    }
+    
+    wb = write(cfd, &new_ft, sizeof(new_ft));
+    if (wb == -1)
     {
         perror("There is an error while writing record to file!");
+        
+        // Release lock before returning
+        lock.l_type = F_UNLCK;
+        fcntl(cfd, F_SETLK, &lock);
+        close(cfd);
         return 0;
     }
+    
+    // Release lock before closing
+    lock.l_type = F_UNLCK;
+    fcntl(cfd, F_SETLK, &lock);
     close(cfd);
+
     bzero(wbuffer,sizeof(wbuffer));
     sprintf(wbuffer,"%s\n%s",new_ft.login,new_ft.password);
     strcat(wbuffer,"^");
@@ -305,17 +411,23 @@ int add_faculty(int connect_fd)
     return 1;
 }
 
-
-
-
-bool view_student_details(int connectfd,int id)
+bool view_student_details(int connectfd, int id)
 {
-    ssize_t rb,wb;
-    char rbuffer[1000],wbuffer[10000],tempBuffer[1000];
+    ssize_t rb, wb;
+    char rbuffer[1000], wbuffer[10000], tempBuffer[1000];
     struct student st;
     int stfd;
-    struct flock lock = {F_RDLCK, SEEK_SET, 0, sizeof(struct student), getpid()};
-    if (id==-1)
+    
+    // Initialize the lock structure for read lock
+    struct flock lock;
+    lock.l_type = F_RDLCK;   // Read lock
+    lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
+    lock.l_len = 0;          // Lock the entire file
+    lock.l_pid = getpid();
+    
+    // Get ID if needed
+    if (id == -1)
     {
         wb=write(connectfd,GET_ID,strlen(GET_ID));
         if (wb==-1)
@@ -332,8 +444,10 @@ bool view_student_details(int connectfd,int id)
         }
         id=atoi(rbuffer);
     }
-    stfd=open("./student_record.txt",O_RDONLY);
-    if (stfd==-1)
+    
+    // Open file and apply read lock
+    stfd = open("./student_record.txt", O_RDONLY);
+    if (stfd == -1)
     {
         bzero(wbuffer,sizeof(wbuffer));
         strcpy(wbuffer,ID_DOESNT_EXIT);
@@ -347,8 +461,24 @@ bool view_student_details(int connectfd,int id)
         rb=read(connectfd,rbuffer,sizeof(rbuffer)); // Dummy read
         return false;
     }
-    int offset=lseek(stfd,id*sizeof(struct student),SEEK_SET);
-    rb=read(stfd,&st,sizeof(struct student));
+    
+    // Acquire read lock
+    if (fcntl(stfd, F_SETLKW, &lock) == -1) {
+        perror("Error acquiring read lock");
+        close(stfd);
+        return false;
+    }
+    
+    // Read the record
+    int offset = lseek(stfd, id*sizeof(struct student), SEEK_SET);
+    rb = read(stfd, &st, sizeof(struct student));
+    
+    // Release lock before sending data to client
+    lock.l_type = F_UNLCK;
+    fcntl(stfd, F_SETLK, &lock);
+    close(stfd);
+    
+    // Rest of function to display data to client
     bzero(wbuffer,sizeof(wbuffer));
     sprintf(wbuffer,"Student Details - \n\tID :%d\n\tName : %s\n\tGender : %c\n\tAge: %d\n\tLoginID : %s\n\tStatus : %d\n\tPassword: %s",st.id,st.name,st.gender,st.age,st.login,st.status,st.password);
     strcat(wbuffer,"\n\nYou'll now be redirected to the main menu...^");
@@ -361,7 +491,6 @@ bool view_student_details(int connectfd,int id)
     rb=read(connectfd,rbuffer,sizeof(rbuffer)); // Dummy read
     return true;
 }
-
 
 bool view_faculty_details(int connectfd,int id)
 {
@@ -525,137 +654,193 @@ void block_student(int connectfd)
 
 void modify_student(int connectfd)
 {
-    ssize_t rb,wb;
-    char rbuffer[1000],wbuffer[1000];
+    ssize_t rb, wb;
+    char rbuffer[1000], wbuffer[1000];
     struct student st;
     int id;
-    wb=write(connectfd,GET_ID,strlen(GET_ID));
-    if(wb==-1)
+    
+    // Initialize lock structure
+    struct flock lock;
+    lock.l_type = F_WRLCK;   // Write lock
+    lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
+    lock.l_len = 0;          // Lock the entire file
+    lock.l_pid = getpid();
+    
+    // Get student ID
+    wb = write(connectfd, GET_ID, strlen(GET_ID));
+    if(wb == -1)
     {
         printf("There is an error while writing message to client!");
         return;
     }
-    bzero(rbuffer,sizeof(rbuffer));
-    rb=read(connectfd,rbuffer,sizeof(rbuffer));
-    if(rb==-1)
+    
+    bzero(rbuffer, sizeof(rbuffer));
+    rb = read(connectfd, rbuffer, sizeof(rbuffer));
+    if(rb == -1)
     {
         printf("There is an error while reading id from client!");
         return;
     }
-    id=atoi(rbuffer);
-    int stdfd=open("./student_record.txt",O_RDWR);
-    int offset=lseek(stdfd,id*sizeof(st),SEEK_SET);
-    if(offset==-1)
+    
+    id = atoi(rbuffer);
+    int stdfd = open("./student_record.txt", O_RDWR);
+    
+    // Acquire lock before reading
+    if (fcntl(stdfd, F_SETLKW, &lock) == -1) {
+        perror("Error acquiring lock");
+        close(stdfd);
+        return;
+    }
+    
+    int offset = lseek(stdfd, id*sizeof(st), SEEK_SET);
+    if(offset == -1)
     {
         perror("Error while seeking to record!");
+        
+        // Release lock
+        lock.l_type = F_UNLCK;
+        fcntl(stdfd, F_SETLK, &lock);
+        close(stdfd);
         return;
     }
-    rb=read(stdfd,&st,sizeof(st));
-    if(rb==-1)
+    
+    rb = read(stdfd, &st, sizeof(st));
+    if(rb == -1)
     {
         perror("There is an error while reading record from the file!");
+        
+        // Release lock
+        lock.l_type = F_UNLCK;
+        fcntl(stdfd, F_SETLK, &lock);
+        close(stdfd);
         return;
     }
+    
+    // Release lock while interacting with client
+    lock.l_type = F_UNLCK;
+    fcntl(stdfd, F_SETLK, &lock);
     close(stdfd);
-    wb=write(connectfd,CHANGE_MENU,strlen(CHANGE_MENU));
-    if(wb==-1)
+    
+    // Get modification details from client
+    wb = write(connectfd, CHANGE_MENU, strlen(CHANGE_MENU));
+    if(wb == -1)
     {
         perror("There is an error while writing message to client!");
         return;
     }
-    rb=read(connectfd,rbuffer,sizeof(rbuffer));
-    if(rb==-1)
+    rb = read(connectfd, rbuffer, sizeof(rbuffer));
+    if(rb == -1)
     {
         perror("Error while reading !");
         return;
     }
-    int choice=atoi(rbuffer);
-    bzero(rbuffer,sizeof(rbuffer));
+    int choice = atoi(rbuffer);
+    bzero(rbuffer, sizeof(rbuffer));
     switch(choice)
     {
         case 1:
-        wb=write(connectfd,NEW_NAME,strlen(NEW_NAME));
-        if(wb==-1)
+        wb = write(connectfd, NEW_NAME, strlen(NEW_NAME));
+        if(wb == -1)
         {
             perror("There is an error while writing message to client!");
             return;
         }
-        rb=read(connectfd,&rbuffer,sizeof(rbuffer));
-        if(rb==-1)
+        rb = read(connectfd, &rbuffer, sizeof(rbuffer));
+        if(rb == -1)
         {
             perror("There is an error while reading!");
             return;
         }
-        strcpy(st.name,rbuffer);
+        strcpy(st.name, rbuffer);
         break;
         case 2:
-        wb=write(connectfd,NEW_AGE,strlen(NEW_AGE));
-        if(wb==-1)
+        wb = write(connectfd, NEW_AGE, strlen(NEW_AGE));
+        if(wb == -1)
         {
             perror("There is an error while writing message to client!");
             return;
         }
-        rb=read(connectfd,&rbuffer,sizeof(rbuffer));
-        if(rb==-1)
+        rb = read(connectfd, &rbuffer, sizeof(rbuffer));
+        if(rb == -1)
         {
             perror("There is an error while reading!");
             return;
         }
-        int uage=atoi(rbuffer);
-        st.age=uage;
+        int uage = atoi(rbuffer);
+        st.age = uage;
         break;
         case 3:
-        wb=write(connectfd,NEW_GENDER,strlen(NEW_GENDER));
-        if(wb==-1)
+        wb = write(connectfd, NEW_GENDER, strlen(NEW_GENDER));
+        if(wb == -1)
         {
             perror("While writing message to client!");
             return;
         }
-        rb=read(connectfd,&rbuffer,sizeof(rbuffer));
-        if(rb==-1)
+        rb = read(connectfd, &rbuffer, sizeof(rbuffer));
+        if(rb == -1)
         {
             perror("There is an error while reading!");
             return;
         }
-        st.gender=rbuffer[0];
+        st.gender = rbuffer[0];
         break;
         default:
-        bzero(wbuffer,sizeof(wbuffer));
-        strcpy(wbuffer,INVALID_MENU_CHOICE);
-        wb=write(connectfd,wbuffer,strlen(wbuffer));
-        if(wb==-1)
+        bzero(wbuffer, sizeof(wbuffer));
+        strcpy(wbuffer, INVALID_MENU_CHOICE);
+        wb = write(connectfd, wbuffer, strlen(wbuffer));
+        if(wb == -1)
         {
             perror("There is an error while writing!");
             return;
         }
-        rb=read(connectfd,rbuffer,sizeof(rbuffer)); // Dummy read
+        rb = read(connectfd, rbuffer, sizeof(rbuffer)); // Dummy read
         return;
     }
-    stdfd=open("./student_record.txt",O_WRONLY);
-    offset=lseek(stdfd,id*sizeof(st),SEEK_SET);
-    if(stdfd==-1)
+    
+    // Re-open file for writing
+    stdfd = open("./student_record.txt", O_WRONLY);
+    if(stdfd == -1)
     {
         perror("There is an error while opening the file!");
         return;
     }
-    wb=write(stdfd,&st,sizeof(st));
-    if(wb==-1)
-    {
-        perror("There is an error while updating");
+    
+    // Re-acquire lock for writing
+    lock.l_type = F_WRLCK;
+    if (fcntl(stdfd, F_SETLKW, &lock) == -1) {
+        perror("Error acquiring lock");
+        close(stdfd);
         return;
     }
+    
+    offset = lseek(stdfd, id*sizeof(st), SEEK_SET);
+    wb = write(stdfd, &st, sizeof(st));
+    if(wb == -1)
+    {
+        perror("There is an error while updating");
+        
+        // Release lock
+        lock.l_type = F_UNLCK;
+        fcntl(stdfd, F_SETLK, &lock);
+        close(stdfd);
+        return;
+    }
+    
+    // Release lock
+    lock.l_type = F_UNLCK;
+    fcntl(stdfd, F_SETLK, &lock);
     close(stdfd);
-    wb=write(connectfd,UPDATE_SUCCESS, strlen(UPDATE_SUCCESS));
-    if(wb==-1)
+    
+    wb = write(connectfd, UPDATE_SUCCESS, strlen(UPDATE_SUCCESS));
+    if(wb == -1)
     {
         perror("There is an error while writing to client");
         return;
     }
-    rb=read(connectfd,rbuffer,sizeof(rbuffer));//dummy read
+    rb = read(connectfd, rbuffer, sizeof(rbuffer)); // Dummy read
     return;
 }
-
-
 
 void modify_faculty(int connectfd)
 {
